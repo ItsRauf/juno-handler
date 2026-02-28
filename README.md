@@ -121,6 +121,7 @@ response = client.chat.completions.create(
 - `MODEL_TOKENIZER` - Tokenizer mode (default: `auto`)
 - `MODEL_CONFIG_FORMAT` - Config format (default: `auto`)
 - `MODEL_LOAD_FORMAT` - Load format (default: `auto`)
+- `MODEL_TOOL_CALL_PARSER` - Tool call parser for function calling (e.g. `hermes`, `mistral`, `llama3_json`). Also enables `enable_auto_tool_choice`. If unset, vLLM assumes the model doesn't support tool calling.
 
 **Limits:**
 - `MODEL_MAX_LEN` - Maximum context length in tokens

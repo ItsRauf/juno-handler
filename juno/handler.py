@@ -11,6 +11,7 @@ from vllm import LLM, SamplingParams
 
 from juno.schema import VALIDATIONS
 
+# Model Settings
 MODEL = os.getenv("MODEL_NAME")
 DTYPE = os.getenv("MODEL_DTYPE")
 QUANTIZATION = os.getenv("MODEL_QUANTIZATION")
@@ -18,16 +19,20 @@ TRUST_REMOTE_CODE = os.getenv("MODEL_TRUST_REMOTE_CODE", "").lower() in ("true",
 TOKENIZER = os.getenv("MODEL_TOKENIZER")
 CONFIG_FORMAT = os.getenv("MODEL_CONFIG_FORMAT")
 LOAD_FORMAT = os.getenv("MODEL_LOAD_FORMAT")
+TOOL_CALL_PARSER = os.getenv("MODEL_TOOL_CALL_PARSER")
 
+# Capacity Settings
 MAX_MODEL_LEN = int(os.getenv("MODEL_MAX_LEN")) if os.getenv("MODEL_MAX_LEN") else None
 MAX_NUM_SEQS = int(os.getenv("MODEL_MAX_NUM_SEQS")) if os.getenv("MODEL_MAX_NUM_SEQS") else None
 DISTRIBUTED_EXECUTOR_BACKEND = os.getenv("DISTRIBUTED_EXECUTOR_BACKEND")
 
+# Sampling defaults
 DEFAULT_TEMPERATURE = float(os.getenv("MODEL_TEMPERATURE") or "0.15")
 DEFAULT_MAX_TOKENS = int(os.getenv("MODEL_MAX_TOKENS") or "32768")
 DEFAULT_TOP_P = float(os.getenv("MODEL_TOP_P") or "0.95")
 
 model = None
+_THINK_RE = re.compile(r'<think>(.*?)</think>', re.DOTALL)
 
 def handler(job):
     input_validation = validate(job["input"], VALIDATIONS)
@@ -71,10 +76,15 @@ def handler(job):
     text = output.text
     reasoning_content = None
 
-    think_match = re.search(r'<think>(.*?)</think>', text, re.DOTALL)
+    think_match = _THINK_RE.search(text)
     if think_match:
         reasoning_content = think_match.group(1).strip()
-        text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL).strip()
+        text = (text[:think_match.start()] + text[think_match.end():]).strip()
+    elif '<think>' in text:
+        # Truncated — model hit max_tokens mid-thought
+        idx = text.index('<think>')
+        reasoning_content = text[idx + 7:].strip()
+        text = text[:idx].strip()
 
     message = {
         "role": "assistant",
@@ -123,6 +133,8 @@ if __name__ == '__main__':
         distributed_executor_backend=DISTRIBUTED_EXECUTOR_BACKEND,
         tensor_parallel_size=int(os.getenv("RUNPOD_GPU_COUNT") or "1"),
         gpu_memory_utilization=float(os.getenv("GPU_MEMORY_UTILIZATION") or "0.8"),
+        tool_call_parser=TOOL_CALL_PARSER,
+        enable_auto_tool_choice=TOOL_CALL_PARSER is not None,
     )
 
     runpod.serverless.start({"handler": handler})
