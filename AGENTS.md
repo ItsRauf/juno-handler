@@ -46,8 +46,6 @@ When adding settings:
 - Prefix model-specific settings with `MODEL_` 
 - Provide sane defaults or `None` to let vLLM use its defaults
 - Never require configuration for optional features
-
-
 - Do not modify or rely on the value of `RP_WORKSPACE`. It is platform-specific and controlled by Runpod, not this project.
 
 ## Additional Help
