@@ -3,6 +3,8 @@ FROM runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404
 
 # This is the location of the network volume for serverless endpoints.
 ENV HF_HOME=/runpod-volume/.cache/huggingface
+ENV VLLM_CACHE_ROOT=/runpod-volume/.cache/vllm
+
 ENV VLLM_LOGGING_COLOR="0"
 ENV UV_HTTP_TIMEOUT=120
 
