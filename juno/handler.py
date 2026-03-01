@@ -3,6 +3,7 @@ import re
 import sys
 import time
 import uuid
+from types import SimpleNamespace
 
 import runpod
 from runpod.serverless import log
@@ -34,6 +35,7 @@ DEFAULT_TOP_P = float(os.getenv("MODEL_TOP_P") or "0.95")
 TOOL_CALL_PARSER = os.getenv("MODEL_TOOL_CALL_PARSER")
 
 model = None
+tool_parser = None
 _THINK_RE = re.compile(r'<think>(.*?)</think>', re.DOTALL)
 
 def handler(job):
@@ -94,8 +96,13 @@ def handler(job):
         "content": text,
     }
 
-    if getattr(output, "tool_calls", None):
-        message["tool_calls"] = output.tool_calls
+    if tool_parser is not None and job_input.get("tools"):
+        parsed = tool_parser.extract_tool_calls(
+            text, SimpleNamespace(tools=job_input["tools"])
+        )
+        if parsed.tools_called:
+            message["tool_calls"] = [tc.model_dump() for tc in parsed.tool_calls]
+            message["content"] = parsed.content
 
     return {
         "id": os.getenv("RUNPOD_REQUEST_ID") or f"rp-{uuid.uuid4().hex[:8]}",
@@ -135,8 +142,11 @@ if __name__ == '__main__':
         distributed_executor_backend=DISTRIBUTED_EXECUTOR_BACKEND,
         tensor_parallel_size=int(os.getenv("RUNPOD_GPU_COUNT") or "1"),
         gpu_memory_utilization=float(os.getenv("GPU_MEMORY_UTILIZATION") or "0.8"),
-        tool_call_parser=TOOL_CALL_PARSER,
-        enable_auto_tool_choice=TOOL_CALL_PARSER is not None,
     )
+
+    if TOOL_CALL_PARSER:
+        from vllm.tool_parsers import ToolParserManager
+        parser_cls = ToolParserManager.get_tool_parser(TOOL_CALL_PARSER)
+        tool_parser = parser_cls(model.get_tokenizer())
 
     runpod.serverless.start({"handler": handler})
