@@ -32,7 +32,7 @@ DEFAULT_MAX_TOKENS = int(os.getenv("MODEL_MAX_TOKENS") or "32768")
 DEFAULT_TOP_P = float(os.getenv("MODEL_TOP_P") or "0.95")
 
 # Tool calling
-TOOL_CALL_PARSER = os.getenv("MODEL_TOOL_CALL_PARSER")
+TOOL_CALL_PARSER = os.getenv("MODEL_TOOL_CALL_PARSER") or None
 
 model = None
 tool_parser = None
