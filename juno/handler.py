@@ -92,12 +92,14 @@ def handler(job):
 
     tool_calls = None
     if tool_parser is not None and job_input.get("tools"):
+        from vllm.entrypoints.openai.chat_completion.protocol import ChatCompletionToolsParam
+        tools = [ChatCompletionToolsParam(**t) for t in job_input["tools"]]
         parsed = tool_parser.extract_tool_calls(
-            text, SimpleNamespace(tools=job_input["tools"])
+            text, SimpleNamespace(tools=tools)  # pyright: ignore[reportArgumentType]
         )
         if parsed.tools_called:
             tool_calls = [tc.model_dump() for tc in parsed.tool_calls]
-            text = parsed.content
+            text = parsed.content or ""
 
     message = {
         "role": "assistant",
@@ -119,9 +121,9 @@ def handler(job):
             "finish_reason": output.finish_reason,
         }],
         "usage": {
-            "prompt_tokens": len(result.prompt_token_ids),
-            "completion_tokens": len(output.token_ids),
-            "total_tokens": len(result.prompt_token_ids) + len(output.token_ids),
+            "prompt_tokens": len(result.prompt_token_ids or []),
+            "completion_tokens": len(output.token_ids or []),
+            "total_tokens": len(result.prompt_token_ids or []) + len(output.token_ids or []),
         }
     }
 
