@@ -30,6 +30,9 @@ DEFAULT_TEMPERATURE = float(os.getenv("MODEL_TEMPERATURE") or "0.15")
 DEFAULT_MAX_TOKENS = int(os.getenv("MODEL_MAX_TOKENS") or "32768")
 DEFAULT_TOP_P = float(os.getenv("MODEL_TOP_P") or "0.95")
 
+# Tool calling
+TOOL_CALL_PARSER = os.getenv("MODEL_TOOL_CALL_PARSER")
+
 model = None
 _THINK_RE = re.compile(r'<think>(.*?)</think>', re.DOTALL)
 
@@ -91,7 +94,7 @@ def handler(job):
         "content": text,
     }
 
-    if hasattr(output, 'tool_calls') and output.tool_calls:
+    if getattr(output, "tool_calls", None):
         message["tool_calls"] = output.tool_calls
 
     return {
@@ -132,6 +135,8 @@ if __name__ == '__main__':
         distributed_executor_backend=DISTRIBUTED_EXECUTOR_BACKEND,
         tensor_parallel_size=int(os.getenv("RUNPOD_GPU_COUNT") or "1"),
         gpu_memory_utilization=float(os.getenv("GPU_MEMORY_UTILIZATION") or "0.8"),
+        tool_call_parser=TOOL_CALL_PARSER,
+        enable_auto_tool_choice=TOOL_CALL_PARSER is not None,
     )
 
     runpod.serverless.start({"handler": handler})
