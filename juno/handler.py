@@ -59,7 +59,7 @@ def handler(job):
 
     if prompt:
         job_input["messages"] = [{"role": "user", "content": prompt}]
-    
+
     sampler = SamplingParams(
         temperature=temperature if temperature is not None else DEFAULT_TEMPERATURE,
         max_tokens=max_tokens if max_tokens is not None else DEFAULT_MAX_TOKENS,
@@ -90,19 +90,23 @@ def handler(job):
         reasoning_content = text[idx + 7:].strip()
         text = text[:idx].strip()
 
+    tool_calls = None
+    if tool_parser is not None and job_input.get("tools"):
+        parsed = tool_parser.extract_tool_calls(
+            text, SimpleNamespace(tools=job_input["tools"])
+        )
+        if parsed.tools_called:
+            tool_calls = [tc.model_dump() for tc in parsed.tool_calls]
+            text = parsed.content
+
     message = {
         "role": "assistant",
         "reasoning_content": reasoning_content,
         "content": text,
     }
 
-    if tool_parser is not None and job_input.get("tools"):
-        parsed = tool_parser.extract_tool_calls(
-            text, SimpleNamespace(tools=job_input["tools"])
-        )
-        if parsed.tools_called:
-            message["tool_calls"] = [tc.model_dump() for tc in parsed.tool_calls]
-            message["content"] = parsed.content
+    if tool_calls:
+        message["tool_calls"] = tool_calls
 
     return {
         "id": os.getenv("RUNPOD_REQUEST_ID") or f"rp-{uuid.uuid4().hex[:8]}",
