@@ -3,6 +3,7 @@ import re
 import sys
 import time
 import uuid
+from types import SimpleNamespace
 
 import runpod
 from runpod.serverless import log
@@ -30,7 +31,11 @@ DEFAULT_TEMPERATURE = float(os.getenv("MODEL_TEMPERATURE") or "0.15")
 DEFAULT_MAX_TOKENS = int(os.getenv("MODEL_MAX_TOKENS") or "32768")
 DEFAULT_TOP_P = float(os.getenv("MODEL_TOP_P") or "0.95")
 
+# Tool calling
+TOOL_CALL_PARSER = os.getenv("MODEL_TOOL_CALL_PARSER") or None
+
 model = None
+tool_parser = None
 _THINK_RE = re.compile(r'<think>(.*?)</think>', re.DOTALL)
 
 def handler(job):
@@ -54,7 +59,7 @@ def handler(job):
 
     if prompt:
         job_input["messages"] = [{"role": "user", "content": prompt}]
-    
+
     sampler = SamplingParams(
         temperature=temperature if temperature is not None else DEFAULT_TEMPERATURE,
         max_tokens=max_tokens if max_tokens is not None else DEFAULT_MAX_TOKENS,
@@ -85,14 +90,25 @@ def handler(job):
         reasoning_content = text[idx + 7:].strip()
         text = text[:idx].strip()
 
+    tool_calls = None
+    if tool_parser is not None and job_input.get("tools"):
+        from vllm.entrypoints.openai.chat_completion.protocol import ChatCompletionToolsParam
+        tools = [ChatCompletionToolsParam(**t) for t in job_input["tools"]]
+        parsed = tool_parser.extract_tool_calls(
+            text, SimpleNamespace(tools=tools)  # pyright: ignore[reportArgumentType]
+        )
+        if parsed.tools_called:
+            tool_calls = [tc.model_dump() for tc in parsed.tool_calls]
+            text = parsed.content or ""
+
     message = {
         "role": "assistant",
         "reasoning_content": reasoning_content,
         "content": text,
     }
 
-    if hasattr(output, 'tool_calls') and output.tool_calls:
-        message["tool_calls"] = output.tool_calls
+    if tool_calls:
+        message["tool_calls"] = tool_calls
 
     return {
         "id": os.getenv("RUNPOD_REQUEST_ID") or f"rp-{uuid.uuid4().hex[:8]}",
@@ -105,9 +121,9 @@ def handler(job):
             "finish_reason": output.finish_reason,
         }],
         "usage": {
-            "prompt_tokens": len(result.prompt_token_ids),
-            "completion_tokens": len(output.token_ids),
-            "total_tokens": len(result.prompt_token_ids) + len(output.token_ids),
+            "prompt_tokens": len(result.prompt_token_ids or []),
+            "completion_tokens": len(output.token_ids or []),
+            "total_tokens": len(result.prompt_token_ids or []) + len(output.token_ids or []),
         }
     }
 
@@ -133,5 +149,10 @@ if __name__ == '__main__':
         tensor_parallel_size=int(os.getenv("RUNPOD_GPU_COUNT") or "1"),
         gpu_memory_utilization=float(os.getenv("GPU_MEMORY_UTILIZATION") or "0.8"),
     )
+
+    if TOOL_CALL_PARSER:
+        from vllm.tool_parsers import ToolParserManager
+        parser_cls = ToolParserManager.get_tool_parser(TOOL_CALL_PARSER)
+        tool_parser = parser_cls(model.get_tokenizer())
 
     runpod.serverless.start({"handler": handler})

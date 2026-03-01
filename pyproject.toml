@@ -21,7 +21,7 @@ dependencies = [
     "flashinfer-python==0.6.3",
     "flashinfer-cubin==0.6.3",
     "flashinfer-jit-cache==0.6.3",
-    
+
 ]
 
 [tool.uv]
